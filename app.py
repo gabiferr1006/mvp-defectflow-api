@@ -14,7 +14,6 @@ app = OpenAPI(__name__, info=info)
 CORS(app)
 
 
-# Definindo tags do Swagger
 home_tag = Tag(
     name="Documentação",
     description="Seleção de documentação: Swagger, Redoc ou RapiDoc"
@@ -55,24 +54,29 @@ def add_defeito(form: DefeitoSchema):
     )
 
     logger.debug(f"Adicionando defeito de título: '{defeito.titulo}'")
+    session = Session()
 
     try:
-        session = Session()
         session.add(defeito)
         session.commit()
 
         logger.debug(f"Defeito adicionado: '{defeito.titulo}'")
         return apresenta_defeito(defeito), 200
 
-    except IntegrityError as e:
+    except IntegrityError:
+        session.rollback()
         error_msg = "Defeito com o mesmo título já cadastrado na base."
         logger.warning(f"Erro ao adicionar defeito '{defeito.titulo}', {error_msg}")
         return {"message": error_msg}, 409
 
-    except Exception as e:
+    except Exception:
+        session.rollback()
         error_msg = "Não foi possível salvar o novo defeito."
         logger.warning(f"Erro ao adicionar defeito '{defeito.titulo}', {error_msg}")
         return {"message": error_msg}, 400
+
+    finally:
+        session.close()
 
 
 @app.get('/defeitos', tags=[defeito_tag],
@@ -83,15 +87,19 @@ def get_defeitos():
     Retorna uma lista com os defeitos registrados na base.
     """
     logger.debug("Coletando defeitos cadastrados")
-
     session = Session()
-    defeitos = session.query(Defeito).all()
 
-    if not defeitos:
-        return {"defeitos": []}, 200
+    try:
+        defeitos = session.query(Defeito).all()
 
-    logger.debug(f"{len(defeitos)} defeito(s) encontrado(s)")
-    return apresenta_defeitos(defeitos), 200
+        if not defeitos:
+            return {"defeitos": []}, 200
+
+        logger.debug(f"{len(defeitos)} defeito(s) encontrado(s)")
+        return apresenta_defeitos(defeitos), 200
+
+    finally:
+        session.close()
 
 
 @app.get('/defeito', tags=[defeito_tag],
@@ -103,17 +111,21 @@ def get_defeito(query: DefeitoBuscaSchema):
     """
     defeito_id = query.id
     logger.debug(f"Coletando dados do defeito ID: {defeito_id}")
-
     session = Session()
-    defeito = session.query(Defeito).filter(Defeito.id == defeito_id).first()
 
-    if not defeito:
-        error_msg = "Defeito não encontrado na base."
-        logger.warning(f"Erro ao buscar defeito ID {defeito_id}, {error_msg}")
-        return {"message": error_msg}, 404
+    try:
+        defeito = session.query(Defeito).filter(Defeito.id == defeito_id).first()
 
-    logger.debug(f"Defeito encontrado ID: {defeito.id}")
-    return apresenta_defeito(defeito), 200
+        if not defeito:
+            error_msg = "Defeito não encontrado na base."
+            logger.warning(f"Erro ao buscar defeito ID {defeito_id}, {error_msg}")
+            return {"message": error_msg}, 404
+
+        logger.debug(f"Defeito encontrado ID: {defeito.id}")
+        return apresenta_defeito(defeito), 200
+
+    finally:
+        session.close()
 
 
 @app.put('/defeito', tags=[defeito_tag],
@@ -127,9 +139,9 @@ def update_defeito(form: DefeitoUpdateSchema):
     novo_status = form.status
 
     logger.debug(f"Atualizando defeito ID {defeito_id} para status: {novo_status}")
+    session = Session()
 
     try:
-        session = Session()
         defeito = session.query(Defeito).filter(Defeito.id == defeito_id).first()
 
         if not defeito:
@@ -143,10 +155,14 @@ def update_defeito(form: DefeitoUpdateSchema):
         logger.debug(f"Status do defeito ID {defeito_id} atualizado para: {novo_status}")
         return apresenta_defeito(defeito), 200
 
-    except Exception as e:
+    except Exception:
+        session.rollback()
         error_msg = "Não foi possível atualizar o status do defeito."
         logger.warning(f"Erro ao atualizar defeito ID {defeito_id}, {error_msg}")
         return {"message": error_msg}, 400
+
+    finally:
+        session.close()
 
 
 @app.delete('/defeito', tags=[defeito_tag],
@@ -158,15 +174,25 @@ def del_defeito(query: DefeitoBuscaSchema):
     """
     defeito_id = query.id
     logger.debug(f"Deletando defeito ID: {defeito_id}")
-
     session = Session()
-    count = session.query(Defeito).filter(Defeito.id == defeito_id).delete()
-    session.commit()
 
-    if count:
-        logger.debug(f"Defeito deletado ID: {defeito_id}")
-        return {"message": "Defeito removido", "id": defeito_id}, 200
+    try:
+        count = session.query(Defeito).filter(Defeito.id == defeito_id).delete()
+        session.commit()
 
-    error_msg = "Defeito não encontrado na base."
-    logger.warning(f"Erro ao deletar defeito ID {defeito_id}, {error_msg}")
-    return {"message": error_msg}, 404
+        if count:
+            logger.debug(f"Defeito deletado ID: {defeito_id}")
+            return {"message": "Defeito removido", "id": defeito_id}, 200
+
+        error_msg = "Defeito não encontrado na base."
+        logger.warning(f"Erro ao deletar defeito ID {defeito_id}, {error_msg}")
+        return {"message": error_msg}, 404
+
+    except Exception:
+        session.rollback()
+        error_msg = "Não foi possível deletar o defeito."
+        logger.warning(f"Erro ao deletar defeito ID {defeito_id}, {error_msg}")
+        return {"message": error_msg}, 400
+
+    finally:
+        session.close()
