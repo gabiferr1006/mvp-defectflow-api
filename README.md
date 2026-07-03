@@ -302,8 +302,10 @@ pip install -r requirements.txt
 
 ### 6. Executar a API
 
+Para executar a API localmente, acesse a pasta do projeto e rode:
+
 ```bash
-flask run --host 0.0.0.0 --port 5000 --reload
+phyton -m flask --app app run --host 120.0.0.1 --port 5000
 ```
 
 ### 7. Acessar a documentação Swagger
